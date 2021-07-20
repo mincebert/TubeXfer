@@ -2,7 +2,7 @@
 NEW
 AUTO
 REM>TubeXfr
-REM v2.1 (2021-06-19)
+REM v2.2 (2021-06-19)
 :
 DIM code% &200,params% 11
 OSBYTE=&FFF4
@@ -66,6 +66,13 @@ LDA #0
 RTS
 :
 .unload
+\ check we're still USERV
+LDA USERV
+CMP #iocode% MOD 256
+BNE uservrehooked
+LDA USERV+1
+CMP #iocode% DIV 256
+BNE uservrehooked
 \ restore USERV
 PHP
 SEI
@@ -75,6 +82,12 @@ LDA olduserv+1
 STA USERV+1
 PLP
 JMP done
+:
+.uservrehooked
+BRK
+EQUB 254 \ =Bad command
+EQUS "USERV re-hooked by another program"
+EQUB 0
 :
 .unkop
 BRK
@@ -184,7 +197,7 @@ CPX #&FF
 BEQ hwcheck
 \ Tube not present - print error
 BRK
-EQUB 4 \ =Mistake
+EQUB 254 \ =Bad command
 EQUS "No Tube present"
 EQUB 0
 :
@@ -194,7 +207,7 @@ LDA #0
 LDX #1
 JSR OSBYTE
 CPX #0
-BNE alreadycheck
+BNE uservxferchk
 :
 \ patch tubexfer for Electron;
 \ we do this whether we've
@@ -221,7 +234,21 @@ INX
 LDA elkpatchtbl,X
 BEQ elkpatchloop
 :
-.alreadycheck
+.uservxferchk
+\ check if our address is in
+\ USERV
+LDA USERV
+CMP #iocode% MOD 256
+BNE uservalreadychk
+LDA USERV+1
+CMP #iocode% DIV 256
+BNE uservalreadychk
+BRK
+EQUB 254
+EQUS "TubeXfer already installed"
+EQUB 0
+:
+.uservalreadychk
 \ check if USERV already hooked
 \ which we class as >=&8000
 \ (really >=&C000 =MOS)
@@ -229,7 +256,7 @@ LDA USERV+1
 BMI uservhook
 \ already patched - print error
 BRK
-EQUB 4 \ =Mistake
+EQUB 254 \ =Bad command
 EQUS "USERV already hooked"
 EQUB 0
 :
@@ -239,10 +266,10 @@ PHP
 SEI
 LDA USERV
 STA olduserv
-LDA #iocode% MOD 256
-STA USERV
 LDA USERV+1
 STA olduserv+1
+LDA #iocode% MOD 256
+STA USERV
 LDA #iocode% DIV 256
 STA USERV+1
 PLP
