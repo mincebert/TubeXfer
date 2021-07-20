@@ -1,7 +1,8 @@
 *BASIC
 NEW
 AUTO
-REM>TubeXfer2
+REM>TubeXfer
+REM v2.0 (2020-08-19)
 :
 DIM code% 500,params% 11
 OSBYTE=&FFF4
@@ -71,7 +72,7 @@ BNE wait19loop \ 3cy
 LDY #0
 .xfer256loop
 \ need to wait >=10us = 20cy
-NOP \ 2cy
+NOP \ 2cy each
 NOP
 NOP
 NOP
@@ -143,7 +144,7 @@ LDX #0
 LDY #&FF
 JSR OSBYTE
 CPX #&FF
-BEQ alreadycheck
+BEQ hwcheck
 \ Tube not present - print error
 LDX #&FF
 .notubeloop
@@ -154,39 +155,20 @@ CMP #&0D
 BNE notubeloop
 RTS
 :
-.alreadycheck
-LDA USERV
-CMP #iocode% MOD 256
-BNE hwcheck
-LDA USERV+1
-CMP #iocode% DIV 256
-BNE hwcheck
-\ already patched - print error
-LDX #&FF
-.alreadyloop
-INX
-LDA alreadymsg,X
-JSR OSASCI
-CMP #&0D
-BNE alreadyloop
-RTS
-:
 .hwcheck
 \ if BBC, skip patching tubexfer
 LDA #0
 LDX #1
 JSR OSBYTE
 CPX #0
-BNE bbchook
+BNE alreadycheck
 :
-\ patch tubexfer for Electron
-LDX #&FF
-.elkmsgloop
-INX
-LDA elkmsg,X
-BEQ elkpatch
-JSR OSASCI
-JMP elkmsgloop
+\ patch tubexfer for Electron;
+\ we do this whether we've
+\ already hooked or not as
+\ we need to ensure TUBEXFER is
+\ correct for this hardware;
+\ hope a call doesn't come in
 .elkpatch
 LDX #&FF
 .elkpatchloop
@@ -205,22 +187,28 @@ STA (scratch),Y
 INX
 LDA elkpatchtbl,X
 BEQ elkpatchloop
-JMP uservhook
 :
-.bbchook
+.alreadycheck
+LDA USERV
+CMP #iocode% MOD 256
+BNE uservhook
+LDA USERV+1
+CMP #iocode% DIV 256
+BNE uservhook
+\ already patched - print error
 LDX #&FF
-.bbchookmsgloop
+.alreadyloop
 INX
-LDA bbcmsg,X
-BEQ uservhook
+LDA alreadymsg,X
 JSR OSASCI
-JMP bbchookmsgloop
+CMP #&0D
+BNE alreadyloop
+RTS
 :
 .uservhook
 \ hook USERV to catch OSWORD
 PHP
 SEI
-PHA
 LDA USERV
 STA olduserv
 LDA #iocode% MOD 256
@@ -229,15 +217,7 @@ LDA USERV+1
 STA olduserv+1
 LDA #iocode% DIV 256
 STA USERV+1
-PLA
 PLP
-LDX #&FF
-.hookedmsgloop
-INX
-LDA hookedmsg,X
-JSR OSASCI
-CMP #&0D
-BNE hookedmsgloop
 RTS
 :
 .elkpatchtbl
@@ -254,16 +234,6 @@ EQUB &0D
 :
 .alreadymsg
 EQUS "Already installed!"
-EQUB &0D
-:
-.elkmsg
-EQUS "Electron"
-EQUB 0
-.bbcmsg
-EQUS "BBC"
-EQUB 0
-.hookedmsg
-EQUS " version installed"
 EQUB &0D
 ]
 :
