@@ -1,10 +1,10 @@
 *BASIC
 NEW
 AUTO
-REM>TubeXfer
-REM v2.0 (2020-08-19)
+REM>TubeXfr
+REM v2.1 (2021-06-19)
 :
-DIM code% 500,params% 11
+DIM code% &200,params% 11
 OSBYTE=&FFF4
 OSASCI=&FFE3
 TUBECALL=&406
@@ -25,20 +25,22 @@ O%=code%
 :
 [ OPT 4+2*pass%
 CMP #&E0 \ OSWORD &E0
-BEQ xfer
+BEQ ourosword
 JMP (olduserv)
 :
 .olduserv
-EQUW 0
+EQUW 0 \ for old USERV addr
 :
-.xfer
-\ store param addr in scratch
+.ourosword
+\ store OSWORD param addr in
+\ scratch
 STX scratch
 STY scratch+1
 :
 LDY #0
 LDA (scratch),Y \ #send bytes
 TAY
+\ Y=num bytes OSWORD params
 DEY
 .paramcopyloop
 LDA (scratch),Y
@@ -46,6 +48,41 @@ STA parambuf,Y
 DEY
 BPL paramcopyloop
 :
+\ check the operation code
+LDA parambuf+2
+CMP #0 \ =2nd>IO
+BEQ xfer2io
+CMP #&FE \ =unload
+BEQ unload
+CMP #&FF
+BNE unkop
+:
+.done
+\ return with OSWORD handled; we
+\ do this for any unknown
+\ operation code (inc. &FF=test
+\ for presence)
+LDA #0
+RTS
+:
+.unload
+\ restore USERV
+PHP
+SEI
+LDA olduserv
+STA USERV
+LDA olduserv+1
+STA USERV+1
+PLP
+JMP done
+:
+.unkop
+BRK
+EQUB 1 \ =Out of range
+EQUS "Unknown TubeXfer operation"
+EQUB 0
+:
+.xfer2io
 .tubeclaim
 LDA #&C0+TUBEID
 JSR TUBECALL
@@ -131,7 +168,7 @@ BNE xfer2loop
 .tuberelease
 LDA #&80+TUBEID
 JSR TUBECALL
-RTS
+JMP done
 :
 \ end address for IO proc code
 .end
@@ -146,14 +183,10 @@ JSR OSBYTE
 CPX #&FF
 BEQ hwcheck
 \ Tube not present - print error
-LDX #&FF
-.notubeloop
-INX
-LDA notubemsg,X
-JSR OSASCI
-CMP #&0D
-BNE notubeloop
-RTS
+BRK
+EQUB 4 \ =Mistake
+EQUS "No Tube present"
+EQUB 0
 :
 .hwcheck
 \ if BBC, skip patching tubexfer
@@ -166,7 +199,7 @@ BNE alreadycheck
 \ patch tubexfer for Electron;
 \ we do this whether we've
 \ already hooked or not as
-\ we need to ensure TUBEXFER is
+\ we need to ensure TUBEXFR is
 \ correct for this hardware;
 \ hope a call doesn't come in
 .elkpatch
@@ -189,21 +222,16 @@ LDA elkpatchtbl,X
 BEQ elkpatchloop
 :
 .alreadycheck
-LDA USERV
-CMP #iocode% MOD 256
-BNE uservhook
+\ check if USERV already hooked
+\ which we class as >=&8000
+\ (really >=&C000 =MOS)
 LDA USERV+1
-CMP #iocode% DIV 256
-BNE uservhook
+BMI uservhook
 \ already patched - print error
-LDX #&FF
-.alreadyloop
-INX
-LDA alreadymsg,X
-JSR OSASCI
-CMP #&0D
-BNE alreadyloop
-RTS
+BRK
+EQUB 4 \ =Mistake
+EQUS "USERV already hooked"
+EQUB 0
 :
 .uservhook
 \ hook USERV to catch OSWORD
@@ -227,26 +255,16 @@ EQUW elkpatch2
 EQUB 0
 EQUW elkpatch3
 EQUB &FF
-:
-.notubemsg
-EQUS "No Tube present!"
-EQUB &0D
-:
-.alreadymsg
-EQUS "Already installed!"
-EQUB &0D
 ]
 :
 NEXT
 codelen%=P%-iocode%
 :
-saveparams$=STR$~(code%)+"+"+STR$~(codelen%)+" "+STR$~(exec OR &FFFF0000)+" "+STR$~(iocode% OR &FFFF0000)
-PRINT "*SAVE ... ";saveparams$
+savecmd$="SAVE TubeXfrX "+STR$~(code%)+"+"+STR$~(codelen%)+" "+STR$~(exec OR &FFFF0000)+" "+STR$~(iocode% OR &FFFF0000)
+PRINT "*";savecmd$
+OSCLI(savecmd$)
+PRINT "Done"
 END
-:
-DEFPROCsave(filename$)
-OSCLI("SAVE "+filename$+" "+saveparams$)
-ENDPROC
 :
 REM gets IO processor OSHWM
 DEFFNoshwm
