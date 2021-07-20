@@ -1,24 +1,22 @@
 *BASIC
 NEW
 AUTO
-REM>B.TubeXfer
+REM>TubeXfer2
 :
 DIM code% 500,params% 11
 OSBYTE=&FFF4
+OSASCI=&FFE3
 TUBECALL=&406
 TUBEID=&10 : REM our ID
+TUBEXFERBBC=&FEE5
+TUBEXFERELK=&FCE5
 USERV=&200
-:
-A%=0 : REM get host version
-X%=1
-X%=(USR(OSBYTE) AND &FF00) DIV &100
-IF X%=0 THEN PRINT "Electron":TUBEXFER=&FCE5 ELSE PRINT "BBC":TUBEXFER=&FEE5
 :
 REM need 2+11 bytes in zeropage
 scratch=&70
 parambuf=scratch+2
 :
-iocode%=FNoshwm
+iocode%=&2000 : REM could be FNoshwm but this is safe for all
 :
 FOR pass%=0 TO 1
 P%=iocode%
@@ -78,7 +76,8 @@ NOP
 NOP
 NOP
 NOP
-LDA TUBEXFER
+.elkpatch1
+LDA TUBEXFERBBC
 STA (parambuf+7),Y \ 6cy
 INY \ 2cy
 BNE xfer256loop \ 3cy
@@ -115,9 +114,11 @@ LDX #10
 DEX
 BNE wait24loop
 :
-LDA TUBEXFER
+.elkpatch2
+LDA TUBEXFERBBC
 STA (parambuf+7),Y
-LDA TUBEXFER
+.elkpatch3
+LDA TUBEXFERBBC
 INY
 CPY parambuf+9
 BEQ tuberelease
@@ -134,8 +135,89 @@ RTS
 \ end address for IO proc code
 .end
 :
-\ normal EXEC addr - install USERV
+\ EXEC addr - install routine
 .exec
+\ check Tube present
+LDA #234
+LDX #0
+LDY #&FF
+JSR OSBYTE
+CPX #&FF
+BEQ alreadycheck
+\ Tube not present - print error
+LDX #&FF
+.notubeloop
+INX
+LDA notubemsg,X
+JSR OSASCI
+CMP #&0D
+BNE notubeloop
+RTS
+:
+.alreadycheck
+LDA USERV
+CMP #iocode% MOD 256
+BNE hwcheck
+LDA USERV+1
+CMP #iocode% DIV 256
+BNE hwcheck
+\ already patched - print error
+LDX #&FF
+.alreadyloop
+INX
+LDA alreadymsg,X
+JSR OSASCI
+CMP #&0D
+BNE alreadyloop
+RTS
+:
+.hwcheck
+\ if BBC, skip patching tubexfer
+LDA #0
+LDX #1
+JSR OSBYTE
+CPX #0
+BNE bbchook
+:
+\ patch tubexfer for Electron
+LDX #&FF
+.elkmsgloop
+INX
+LDA elkmsg,X
+BEQ elkpatch
+JSR OSASCI
+JMP elkmsgloop
+.elkpatch
+LDX #&FF
+.elkpatchloop
+INX
+LDA elkpatchtbl,X
+STA scratch
+INX
+LDA elkpatchtbl,X
+STA scratch+1
+LDY #1 : \ addr after opcode
+LDA #TUBEXFERELK MOD 256
+STA (scratch),Y
+INY
+LDA #TUBEXFERELK DIV 256
+STA (scratch),Y
+INX
+LDA elkpatchtbl,X
+BEQ elkpatchloop
+JMP uservhook
+:
+.bbchook
+LDX #&FF
+.bbchookmsgloop
+INX
+LDA bbcmsg,X
+BEQ uservhook
+JSR OSASCI
+JMP bbchookmsgloop
+:
+.uservhook
+\ hook USERV to catch OSWORD
 PHP
 SEI
 PHA
@@ -149,8 +231,42 @@ LDA #iocode% DIV 256
 STA USERV+1
 PLA
 PLP
+LDX #&FF
+.hookedmsgloop
+INX
+LDA hookedmsg,X
+JSR OSASCI
+CMP #&0D
+BNE hookedmsgloop
 RTS
+:
+.elkpatchtbl
+EQUW elkpatch1
+EQUB 0
+EQUW elkpatch2
+EQUB 0
+EQUW elkpatch3
+EQUB &FF
+:
+.notubemsg
+EQUS "No Tube present!"
+EQUB &0D
+:
+.alreadymsg
+EQUS "Already installed!"
+EQUB &0D
+:
+.elkmsg
+EQUS "Electron"
+EQUB 0
+.bbcmsg
+EQUS "BBC"
+EQUB 0
+.hookedmsg
+EQUS " version installed"
+EQUB &0D
 ]
+:
 NEXT
 codelen%=P%-iocode%
 :
