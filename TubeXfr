@@ -1,0 +1,170 @@
+*BASIC
+NEW
+AUTO
+REM>B.TubeXfer
+:
+DIM code% 500,params% 11
+OSBYTE=&FFF4
+TUBECALL=&406
+TUBEID=&10 : REM our ID
+USERV=&200
+:
+A%=0 : REM get host version
+X%=1
+X%=(USR(OSBYTE) AND &FF00) DIV &100
+IF X%=0 THEN PRINT "Electron":TUBEXFER=&FCE5 ELSE PRINT "BBC":TUBEXFER=&FEE5
+:
+REM need 2+11 bytes in zeropage
+scratch=&70
+parambuf=scratch+2
+:
+iocode%=FNoshwm
+:
+FOR pass%=0 TO 1
+P%=iocode%
+O%=code%
+:
+[ OPT 4+2*pass%
+CMP #&E0 \ OSWORD &E0
+BEQ xfer
+JMP (olduserv)
+:
+.olduserv
+EQUW 0
+:
+.xfer
+\ store param addr in scratch
+STX scratch
+STY scratch+1
+:
+LDY #0
+LDA (scratch),Y \ #send bytes
+TAY
+DEY
+.paramcopyloop
+LDA (scratch),Y
+STA parambuf,Y
+DEY
+BPL paramcopyloop
+:
+.tubeclaim
+LDA #&C0+TUBEID
+JSR TUBECALL
+BCC tubeclaim
+:
+\ skip 256 byte xfer if <256
+LDA parambuf+10
+BEQ xfer2
+:
+.xfer256
+LDA #6 \ 256 byte 2>IO
+\ 2nd proc addr -> YX
+LDX #(parambuf+3) MOD 256
+LDY #(parambuf+3) DIV 256
+JSR TUBECALL
+:
+\ need to wait >=19us = 38cy
+\ could adjust for below
+LDX #8
+.wait19loop
+DEX \ 2cy
+BNE wait19loop \ 3cy
+:
+LDY #0
+.xfer256loop
+\ need to wait >=10us = 20cy
+NOP \ 2cy
+NOP
+NOP
+NOP
+NOP
+LDA TUBEXFER
+STA (parambuf+7),Y \ 6cy
+INY \ 2cy
+BNE xfer256loop \ 3cy
+:
+INC parambuf+4 \ 2nd 3MSB
+BNE xfer256inc
+INC parambuf+5 \ 2nd 2MSB
+BNE xfer256inc
+INC parambuf+6 \ 2nd MSB
+.xfer256inc
+INC parambuf+8 \ IO MSB
+DEC parambuf+10 \ size MSB
+BNE xfer256
+:
+.xfer2
+\ skip if no <256 bytes
+LDA parambuf+9
+BEQ tuberelease
+:
+LDA #2 \ 256 byte 2>IO
+\ 2nd proc addr -> YX
+LDX #(parambuf+3) MOD 256
+LDY #(parambuf+3) DIV 256
+JSR TUBECALL
+:
+\ count xferred
+LDY #0
+:
+.xfer2loop
+\ wait >=24us = 48 cycles
+\ could allow for above block
+LDX #10
+.wait24loop
+DEX
+BNE wait24loop
+:
+LDA TUBEXFER
+STA (parambuf+7),Y
+LDA TUBEXFER
+INY
+CPY parambuf+9
+BEQ tuberelease
+STA (parambuf+7),Y
+INY
+CPY parambuf+9
+BNE xfer2loop
+:
+.tuberelease
+LDA #&80+TUBEID
+JSR TUBECALL
+RTS
+:
+\ end address for IO proc code
+.end
+:
+\ normal EXEC addr - install USERV
+.exec
+PHP
+SEI
+PHA
+LDA USERV
+STA olduserv
+LDA #iocode% MOD 256
+STA USERV
+LDA USERV+1
+STA olduserv+1
+LDA #iocode% DIV 256
+STA USERV+1
+PLA
+PLP
+RTS
+]
+NEXT
+codelen%=P%-iocode%
+:
+saveparams$=STR$~(code%)+"+"+STR$~(codelen%)+" "+STR$~(exec OR &FFFF0000)+" "+STR$~(iocode% OR &FFFF0000)
+PRINT "*SAVE ... ";saveparams$
+END
+:
+DEFPROCsave(filename$)
+OSCLI("SAVE "+filename$+" "+saveparams$)
+ENDPROC
+:
+REM gets IO processor OSHWM
+DEFFNoshwm
+A%=&B4
+X%=0
+Y%=&FF
+=USR(OSBYTE) AND &FF00
