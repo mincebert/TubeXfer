@@ -2,11 +2,10 @@
 NEW
 AUTO
 REM>TubeXfr
-REM v2.2 (2021-06-19)
+REM v2.3 (2021-09-04)
 :
 DIM code% &200,params% 11
 OSBYTE=&FFF4
-OSASCI=&FFE3
 TUBECALL=&406
 TUBEID=&10 : REM our ID
 TUBEXFERBBC=&FEE5
@@ -31,6 +30,18 @@ JMP (olduserv)
 .olduserv
 EQUW 0 \ for old USERV addr
 :
+.paramstoobig
+BRK
+EQUB 20 \ =Too big
+EQUS "Parameter block too big"
+EQUB 0
+:
+.unkop
+BRK
+EQUB 1 \ =Out of range
+EQUS "Unknown TubeXfer operation"
+EQUB 0
+:
 .ourosword
 \ store OSWORD param addr in
 \ scratch
@@ -39,6 +50,8 @@ STY scratch+1
 :
 LDY #0
 LDA (scratch),Y \ #send bytes
+CMP #12 \ =max size + 1
+BCS paramstoobig
 TAY
 \ Y=num bytes OSWORD params
 DEY
@@ -87,12 +100,6 @@ JMP done
 BRK
 EQUB 254 \ =Bad command
 EQUS "USERV re-hooked by another program"
-EQUB 0
-:
-.unkop
-BRK
-EQUB 1 \ =Out of range
-EQUS "Unknown TubeXfer operation"
 EQUB 0
 :
 .xfer2io
