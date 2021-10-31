@@ -77,7 +77,7 @@ BPL paramcopyloop
 :
 \ check the operation code
 LDA param_op
-CMP #0 \ =P>IO
+CMP #0 \ =P>H
 BEQ xfer2h
 CMP #&FE \ =unload
 BEQ unload
@@ -138,7 +138,7 @@ BEQ xfer2
 \ use fast 256-byte transfer
 \ mode for multiples of 256
 .xfer256
-LDA #6 \ 256-byte P>IO
+LDA #6 \ 256-byte P>H
 \ parasite addr -> YX
 LDX #param_paddr MOD 256
 LDY #param_paddr DIV 256
@@ -174,7 +174,7 @@ INC param_paddr+2 \ P 2MSBy
 BNE xfer256inc
 INC param_paddr+3 \ P 1MSBy
 .xfer256inc
-INC param_haddr+1 \ IO MSBy
+INC param_haddr+1 \ H MSBy
 DEC param_bytes+1 \ size MSBy
 BNE xfer256
 :
@@ -185,7 +185,7 @@ BNE xfer256
 LDA param_bytes \ size LSBy
 BEQ tuberelease
 :
-LDA #2 \ 2-byte P>IO
+LDA #2 \ 2-byte P>H
 \ parasite addr -> YX
 LDX #(param_paddr) MOD 256
 LDY #(param_paddr) DIV 256
@@ -223,7 +223,7 @@ LDA #&80+TUBEID
 JSR TUBECALL
 JMP done
 :
-\ end address for IO proc code
+\ end address for host proc code
 .end
 :
 \ EXEC addr - install routine
@@ -333,7 +333,7 @@ OSCLI(savecmd$)
 PRINT "Done"
 END
 :
-REM gets IO processor OSHWM
+REM gets host processor OSHWM
 DEFFNoshwm
 A%=&B4
 X%=0
