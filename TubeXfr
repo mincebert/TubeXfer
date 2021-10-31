@@ -2,7 +2,7 @@
 NEW
 AUTO
 REM>TubeXfr
-ver$="v2.4 (2021-09-06)"
+ver$="v3.0 (2021-10-29)"
 :
 DIM code% &200,params% 11
 OSBYTE=&FFF4
@@ -12,9 +12,17 @@ TUBEXFERBBC=&FEE5
 TUBEXFERELK=&FCE5
 USERV=&200
 :
-REM need 2+11 bytes in zeropage
+REM need 2+12 bytes in zeropage
 scratch=&70
 parambuf=scratch+2
+param_nsnd=parambuf+0
+param_nrtn=parambuf+1
+param_rtn=parambuf+2
+param_op=parambuf+3
+param_paddr=parambuf+4
+param_ioaddr=parambuf+8
+param_bytes=parambuf+10
+parambufsize=12
 :
 iocode%=&2000 : REM could be FNoshwm but this is safe for all
 :
@@ -54,9 +62,9 @@ EQUB 0
 STX scratch
 STY scratch+1
 :
-LDY #0
+LDY #param_nsnd-parambuf
 LDA (scratch),Y \ #sent bytes
-CMP #12 \ =max size + 1
+CMP #parambufsize+1
 BCS paramstoobig
 TAY
 \ Y=num bytes OSWORD params
@@ -68,8 +76,8 @@ DEY
 BPL paramcopyloop
 :
 \ check the operation code
-LDA parambuf+2
-CMP #0 \ =2nd>IO
+LDA param_op
+CMP #0 \ =P>IO
 BEQ xfer2io
 CMP #&FE \ =unload
 BEQ unload
@@ -77,6 +85,16 @@ CMP #&FF
 BNE unkop
 :
 .done
+\ set return value to 1, if it
+\ is included in the number of
+\ return bytes
+LDA param_nrtn
+CMP #param_nrtn-parambuf
+BCC donereturn
+LDA #1
+LDY #param_rtn-parambuf
+STA (scratch),Y
+.donereturn
 \ return with OSWORD handled for
 \ &FF=test for presence and jump
 \ here after other operations
@@ -114,16 +132,16 @@ JSR TUBECALL
 BCC tubeclaim
 :
 \ skip 256 byte xfer if <256
-LDA parambuf+10
+LDA param_bytes+1
 BEQ xfer2
 :
 \ use fast 256-byte transfer
 \ mode for multiples of 256
 .xfer256
-LDA #6 \ 256-byte 2>IO
-\ 2nd proc addr -> YX
-LDX #(parambuf+3) MOD 256
-LDY #(parambuf+3) DIV 256
+LDA #6 \ 256-byte P>IO
+\ parasite addr -> YX
+LDX #param_paddr MOD 256
+LDY #param_paddr DIV 256
 JSR TUBECALL
 :
 \ need to wait >=19us = 38cy for
@@ -146,31 +164,31 @@ NOP
 NOP
 .elkpatch1
 LDA TUBEXFERBBC \ 4cy
-STA (parambuf+7),Y \ 6cy
+STA (param_ioaddr),Y \ 6cy
 INY \ 2cy
 BNE xfer256loop \ 3cy
 :
-INC parambuf+4 \ 2nd 3MSBy
+INC param_paddr+1 \ P 3MSBy
 BNE xfer256inc
-INC parambuf+5 \ 2nd 2MSBy
+INC param_paddr+2 \ P 2MSBy
 BNE xfer256inc
-INC parambuf+6 \ 2nd MSBy
+INC param_paddr+3 \ P 1MSBy
 .xfer256inc
-INC parambuf+8 \ IO MSB
-DEC parambuf+10 \ size MSB
+INC param_ioaddr+1 \ IO MSBy
+DEC param_bytes+1 \ size MSBy
 BNE xfer256
 :
 \ use 2-byte transfer mode for
 \ remaining bytes <256
 .xfer2
 \ skip if no <256 bytes
-LDA parambuf+9
+LDA param_bytes \ size LSBy
 BEQ tuberelease
 :
-LDA #2 \ 2-byte 2>IO
-\ 2nd proc addr -> YX
-LDX #(parambuf+3) MOD 256
-LDY #(parambuf+3) DIV 256
+LDA #2 \ 2-byte P>IO
+\ parasite addr -> YX
+LDX #(param_paddr) MOD 256
+LDY #(param_paddr) DIV 256
 JSR TUBECALL
 :
 \ initialise count xferred
@@ -185,17 +203,17 @@ DEX \ 2cy
 BNE xfer2loop \ 3cy (taken)/2cy
 .elkpatch2
 LDA TUBEXFERBBC \ first byte
-STA (parambuf+7),Y
+STA (param_ioaddr),Y
 .elkpatch3
 LDA TUBEXFERBBC \ second byte
 \ need to wait >=26us = 52cy
 \ this part uses 24 before loop
 INY \ 2cy
-CPY parambuf+9 \ 3cy
+CPY param_bytes \ 3cy
 BEQ tuberelease \ 2cy (fail)
-STA (parambuf+7),Y \ 6cy
+STA (param_ioaddr),Y \ 6cy
 INY \ 2cy
-CPY parambuf+9 \ 3cy
+CPY param_bytes \ 3cy
 BEQ tuberelease \ 2cy (fail)
 LDX #6 \ 2cy, *5/4=>+29cy
 JMP xfer2loop \ 3cy
