@@ -44,18 +44,6 @@ EQUB 0
 .olduserv
 EQUW 0 \ for old USERV addr
 :
-.paramstoobig
-BRK
-EQUB 20 \ =Too big
-EQUS "Parameter block too big"
-EQUB 0
-:
-.unkop
-BRK
-EQUB 1 \ =Out of range
-EQUS "Unknown operation"
-EQUB 0
-:
 .ourosword
 \ store OSWORD param addr in
 \ scratch
@@ -65,7 +53,7 @@ STY scratch+1
 LDY #param_nsnd-parambuf
 LDA (scratch),Y \ #sent bytes
 CMP #parambufsize+1
-BCS paramstoobig
+BCS doneerror
 TAY
 \ Y=num bytes OSWORD params
 DEY
@@ -81,49 +69,48 @@ CMP #0 \ =P>H
 BEQ xfer2h
 CMP #&FE \ =unload
 BEQ unload
-CMP #&FF
-BNE unkop
+CMP #&FF \ =test presence
+BNE doneerror
+\ test presence - just return
+\ success
 :
-.done
-\ set return value to 1, if it
+.doneok
+\ done successfully
+LDA #1
+\ store return value only if it
 \ is included in the number of
 \ return bytes
-LDA param_nrtn
-CMP #param_nrtn-parambuf
+.done
+LDY param_nrtn
+CPY #param_nrtn-parambuf
 BCC donereturn
-LDA #1
 LDY #param_rtn-parambuf
 STA (scratch),Y
 .donereturn
-\ return with OSWORD handled for
-\ &FF=test for presence and jump
-\ here after other operations
+\ return with OSWORD handled
 LDA #0
 RTS
+:
+.doneerror
+LDA #&FF \ =return error
+JMP done
 :
 .unload
 \ check we're still USERV
 LDA USERV
 CMP #start MOD 256
-BNE uservrehooked
+BNE doneerror
 LDA USERV+1
 CMP #start DIV 256
-BNE uservrehooked
+BNE doneerror
 \ restore USERV
-PHP
 SEI
 LDA olduserv
 STA USERV
 LDA olduserv+1
 STA USERV+1
-PLP
-JMP done
-:
-.uservrehooked
-BRK
-EQUB 254 \ =Bad command
-EQUS "USERV re-hooked by another program"
-EQUB 0
+CLI
+JMP doneok
 :
 .xfer2h
 .tubeclaim
