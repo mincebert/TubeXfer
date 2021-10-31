@@ -20,14 +20,14 @@ param_nrtn=parambuf+1
 param_rtn=parambuf+2
 param_op=parambuf+3
 param_paddr=parambuf+4
-param_ioaddr=parambuf+8
+param_haddr=parambuf+8
 param_bytes=parambuf+10
 parambufsize=12
 :
-iocode%=&2000 : REM could be FNoshwm but this is safe for all
+hcode%=&2000 : REM could be FNoshwm but this is safe for all
 :
 FOR pass%=0 TO 1
-P%=iocode%
+P%=hcode%
 O%=code%
 :
 [ OPT 4+2*pass%
@@ -78,7 +78,7 @@ BPL paramcopyloop
 \ check the operation code
 LDA param_op
 CMP #0 \ =P>IO
-BEQ xfer2io
+BEQ xfer2h
 CMP #&FE \ =unload
 BEQ unload
 CMP #&FF
@@ -125,7 +125,7 @@ EQUB 254 \ =Bad command
 EQUS "USERV re-hooked by another program"
 EQUB 0
 :
-.xfer2io
+.xfer2h
 .tubeclaim
 LDA #&C0+TUBEID
 JSR TUBECALL
@@ -164,7 +164,7 @@ NOP
 NOP
 .elkpatch1
 LDA TUBEXFERBBC \ 4cy
-STA (param_ioaddr),Y \ 6cy
+STA (param_haddr),Y \ 6cy
 INY \ 2cy
 BNE xfer256loop \ 3cy
 :
@@ -174,7 +174,7 @@ INC param_paddr+2 \ P 2MSBy
 BNE xfer256inc
 INC param_paddr+3 \ P 1MSBy
 .xfer256inc
-INC param_ioaddr+1 \ IO MSBy
+INC param_haddr+1 \ IO MSBy
 DEC param_bytes+1 \ size MSBy
 BNE xfer256
 :
@@ -203,7 +203,7 @@ DEX \ 2cy
 BNE xfer2loop \ 3cy (taken)/2cy
 .elkpatch2
 LDA TUBEXFERBBC \ first byte
-STA (param_ioaddr),Y
+STA (param_haddr),Y
 .elkpatch3
 LDA TUBEXFERBBC \ second byte
 \ need to wait >=26us = 52cy
@@ -211,7 +211,7 @@ LDA TUBEXFERBBC \ second byte
 INY \ 2cy
 CPY param_bytes \ 3cy
 BEQ tuberelease \ 2cy (fail)
-STA (param_ioaddr),Y \ 6cy
+STA (param_haddr),Y \ 6cy
 INY \ 2cy
 CPY param_bytes \ 3cy
 BEQ tuberelease \ 2cy (fail)
@@ -325,9 +325,9 @@ EQUB &FF
 ]
 :
 NEXT
-codelen%=P%-iocode%
+codelen%=P%-hcode%
 :
-savecmd$="SAVE TubeXfrX "+STR$~(code%)+"+"+STR$~(codelen%)+" "+STR$~(exec OR &FFFF0000)+" "+STR$~(iocode% OR &FFFF0000)
+savecmd$="SAVE TubeXfrX "+STR$~(code%)+"+"+STR$~(codelen%)+" "+STR$~(exec OR &FFFF0000)+" "+STR$~(hcode% OR &FFFF0000)
 PRINT "*";savecmd$
 OSCLI(savecmd$)
 PRINT "Done"
