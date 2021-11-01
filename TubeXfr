@@ -2,9 +2,9 @@
 NEW
 AUTO
 REM>TubeXfr
-ver$="v3.0 (2021-10-29)"
+ver$="v3.1 (2021-11-01)"
 :
-DIM code% &200,params% 11
+DIM code% &200
 OSBYTE=&FFF4
 TUBECALL=&406
 TUBEID=&10 : REM our ID
@@ -23,6 +23,7 @@ param_paddr=parambuf+4
 param_haddr=parambuf+8
 param_bytes=parambuf+10
 parambufsize=12
+DIM params% parambufsize
 :
 hcode%=&2000 : REM could be FNoshwm but this is safe for all
 :
@@ -104,12 +105,13 @@ LDA USERV+1
 CMP #start DIV 256
 BNE doneerror
 \ restore USERV
+PHP
 SEI
 LDA olduserv
 STA USERV
 LDA olduserv+1
 STA USERV+1
-CLI
+PLP
 JMP doneok
 :
 .xfer2h
@@ -208,9 +210,9 @@ JMP xfer2loop \ 3cy
 .tuberelease
 LDA #&80+TUBEID
 JSR TUBECALL
-JMP done
+JMP doneok
 :
-\ end address for host proc code
+\ end address for H proc code
 .end
 :
 \ EXEC addr - install routine
